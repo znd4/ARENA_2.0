@@ -26,7 +26,7 @@ pre-commit
 diffusers
 gdown
 jaxtyping
-typeguard
+typeguard<4
 streamlit
 torchinfo
 frozendict
