@@ -85,14 +85,37 @@ def intersect_rays_1d(
     v = x[..., 1]
     return ((u >= 0) & (0 <= v) & (v <= 1) & (~(singular_mask))).any(dim=1)
 
-# def make_rays_2d(num_pixels_y: int, num_pixels_z: int, y_limit: float, z_limit: float) -> Float[t.Tensor, "nrays 2 3"]:
-#     '''
-#     num_pixels_y: The number of pixels in the y dimension
-#     num_pixels_z: The number of pixels in the z dimension
-#
-#     y_limit: At x=1, the rays should extend from -y_limit to +y_limit, inclusive of both.
-#     z_limit: At x=1, the rays should extend from -z_limit to +z_limit, inclusive of both.
-#
-#     Returns: shape (num_rays=num_pixels_y * num_pixels_z, num_points=2, num_dims=3).
-#     '''
-#     pass
+@jaxtyped
+@typeguard.typechecked
+def make_rays_2d(
+    num_pixels_y: int,
+    num_pixels_z: int,
+    y_limit: float,
+    z_limit: float,
+) -> Float[t.Tensor, "num_pixels_y * num_pixels_z 2 3"]:
+    '''
+    num_pixels_y: The number of pixels in the y dimension
+    num_pixels_z: The number of pixels in the z dimension
+
+    y_limit: At x=1, the rays should extend from -y_limit to +y_limit, inclusive of both.
+    z_limit: At x=1, the rays should extend from -z_limit to +z_limit, inclusive of both.
+
+    Returns: shape (num_rays=num_pixels_y * num_pixels_z, num_points=2, num_dims=3).
+    '''
+    result = t.zeros((num_pixels_y * num_pixels_z, 2, 3))
+    y_vals = t.linspace(-y_limit, y_limit, num_pixels_y)
+    z_vals = t.linspace(-z_limit, z_limit, num_pixels_z)
+
+    @jaxtyped
+    def permute_vectorized() -> Float[t.Tensor, "num_pixels_y num_pixels_z 3"]:
+        return t.stack(
+            (
+                t.ones((1,))[:, None],
+                y_vals[:, None],
+                z_vals[None, :],
+            ),
+            dim=2,
+        )
+    result[:, 1, :] = permute_vectorized()
+    return result
+
