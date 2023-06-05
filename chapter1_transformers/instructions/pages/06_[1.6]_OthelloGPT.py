@@ -463,7 +463,7 @@ plot_square_as_board(temp_board_state.reshape(8, 8), zmax=0, diverging_scale=Fal
 > * **`model` is an 8-layer autoregressive transformer.**
 >     * It has been trained to predict legal Othello moves (all with the same probability).
 >     * It gets fed a sequence of type `int` (i.e. integers from 0 to 60, where 0 represents "pass" (not present in our data) and the other numbers represent the 60 moves, excluding 4 middle squares).
-> * **`board_seqs_int`, `board_seqs_str` are different representations of all 10000 of our games.**
+> * **`board_seqs_int`, `board_seqs_string` are different representations of all 10000 of our games.**
 >     * Both have shape `(num_games=10000, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
 
@@ -559,13 +559,13 @@ focus_logits.shape
 > * **`model` is an 8-layer autoregressive transformer.**
 >     * It has been trained to predict legal Othello moves (all with the same probability).
 >     * It gets fed a sequence of type `int` (i.e. integers from 0 to 60, where 0 represents "pass" (not present in our data) and the other numbers represent the 60 moves, excluding 4 middle squares).
-> * **`board_seqs_int`, `board_seqs_str` are different representations of all 10000 of our games.**
+> * **`board_seqs_int`, `board_seqs_string` are different representations of all 10000 of our games.**
 >     * Both have shape `(num_games=10000, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
 > 
 > New:
 > 
-> * **`focus_games_int`, `focus_games_str` - different representations of our "focus games".**
+> * **`focus_games_int`, `focus_games_string` - different representations of our "focus games".**
 >     * Both have shape `(num_games=50, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
 > * **`focus_states` tells us what the board state is at any point.**
@@ -701,10 +701,10 @@ Trying to locate this circuit might be a fun bonus exercise!
 > * **`model` is an 8-layer autoregressive transformer.**
 >     * It has been trained to predict legal Othello moves (all with the same probability).
 >     * It gets fed a sequence of type `int` (i.e. integers from 0 to 60, where 0 represents "pass" (not present in our data) and the other numbers represent the 60 moves, excluding 4 middle squares).
-> * **`board_seqs_int`, `board_seqs_str` are different representations of all 10000 of our games.**
+> * **`board_seqs_int`, `board_seqs_string` are different representations of all 10000 of our games.**
 >     * Both have shape `(num_games=10000, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
-> * **`focus_games_int`, `focus_games_str` - different representations of our "focus games".**
+> * **`focus_games_int`, `focus_games_string` - different representations of our "focus games".**
 >     * Both have shape `(num_games=50, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
 > * **`focus_states` tells us what the board state is at any point.**
@@ -806,6 +806,13 @@ Note that we can see the probe is worse near corners, as we anecdotally observed
 
 ### Exercise - calculate probe cosine similarities
 
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 10-20 minutes on this exercise.
+```
+
 As another nice way of visualising how the "black to play" and "white to play" probes are similar, we can calculate the cosine similarity between each of the embedding vectors for both odd and even modes.
 
 Try and replicate Neel's plot, which you can find at [this link](https://res.cloudinary.com/lesswrong-2-0/image/upload/f_auto,q_auto/v1/mirroredImages/nmxzr2zsjNtjaHh7x/cuxy4pf353wazoq5emmn). You can see in this plot that the cosine similarities for the probe directions at odd and even moves are close to -1 (indicating that the probes are finding the right directions).
@@ -815,6 +822,7 @@ Remember, `full_linear_probe` has shape `(modes=3, d_model=512, rows=8, cols=8, 
 
 ```python
 # YOUR CODE HERE - define the `cosine_similarities` tensor, to be plotted
+
 imshow(
     cosine_similarities,
     title="Cosine Sim of B-W Linear Probe Directions by Cell",
@@ -1095,10 +1103,10 @@ The fact that we see the model's predictions for `G4` and `D2` change (with `G4`
 > * **`model` is an 8-layer autoregressive transformer.**
 >     * It has been trained to predict legal Othello moves (all with the same probability).
 >     * It gets fed a sequence of type `int` (i.e. integers from 0 to 60, where 0 represents "pass" (not present in our data) and the other numbers represent the 60 moves, excluding 4 middle squares).
-> * **`board_seqs_int`, `board_seqs_str` are different representations of all 10000 of our games.**
+> * **`board_seqs_int`, `board_seqs_string` are different representations of all 10000 of our games.**
 >     * Both have shape `(num_games=10000, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
-> * **`focus_games_int`, `focus_games_str` - different representations of our "focus games".**
+> * **`focus_games_int`, `focus_games_string` - different representations of our "focus games".**
 >     * Both have shape `(num_games=50, num_moves=60)`.
 >     * The former has labels from 1 to 60, the latter from 0 to 63 excluding the middle squares.
 > * **`focus_states` tells us what the board state is at any point.**
@@ -1407,11 +1415,12 @@ def get_w_in(
     normalize: bool = False,
 ) -> Float[Tensor, "d_model"]:
     '''
-    Returns the input weights for the neuron in the list, at each square on the board.
+    Returns the input weights for the given neuron.
 
     If normalize is True, the weights are normalized to unit norm.
     '''
     pass
+
 
 def get_w_out(
     model: HookedTransformer,
@@ -1420,9 +1429,12 @@ def get_w_out(
     normalize: bool = False,
 ) -> Float[Tensor, "d_model"]:
     '''
-    Returns the input weights for the neuron in the list, at each square on the board.
+    Returns the input weights for the given neuron.
+
+    If normalize is True, the weights are normalized to unit norm.
     '''
     pass
+
 
 def calculate_neuron_input_weights(
     model: HookedTransformer, 
@@ -1431,12 +1443,13 @@ def calculate_neuron_input_weights(
     neuron: int
 ) -> Float[Tensor, "rows cols"]:
     '''
-    Returns tensor of the input weights for each neuron in the list, at each square on the board,
+    Returns tensor of the input weights for the given neuron, at each square on the board,
     projected along the corresponding probe directions.
 
     Assume probe directions are normalized. You should also normalize the model weights.
     '''
     pass
+
 
 def calculate_neuron_output_weights(
     model: HookedTransformer, 
@@ -1445,7 +1458,7 @@ def calculate_neuron_output_weights(
     neuron: int
 ) -> Float[Tensor, "rows cols"]:
     '''
-    Returns tensor of the output weights for each neuron in the list, at each square on the board,
+    Returns tensor of the output weights for the given neuron, at each square on the board,
     projected along the corresponding probe directions.
 
     Assume probe directions are normalized. You should also normalize the model weights.
@@ -1485,7 +1498,9 @@ def get_w_out(
     normalize: bool = False,
 ) -> Float[Tensor, "d_model"]:
     '''
-    Returns the input weights for the neuron in the list, at each square on the board.
+    Returns the output weights for the neuron in the list, at each square on the board.
+
+    If normalize is True, the weights are normalized to unit norm.
     '''
     # SOLUTION
     w_out = model.W_out[layer, neuron, :].detach().clone()
@@ -1499,7 +1514,7 @@ def calculate_neuron_input_weights(
     neuron: int
 ) -> Float[Tensor, "rows cols"]:
     '''
-    Returns tensor of the input weights for each neuron in the list, at each square on the board,
+    Returns tensor of the input weights for the given neuron, at each square on the board,
     projected along the corresponding probe directions.
 
     Assume probe directions are normalized. You should also normalize the model weights.
@@ -1519,7 +1534,7 @@ def calculate_neuron_output_weights(
     neuron: int
 ) -> Float[Tensor, "rows cols"]:
     '''
-    Returns tensor of the output weights for each neuron in the list, at each square on the board,
+    Returns tensor of the output weights for the given neuron, at each square on the board,
     projected along the corresponding probe directions.
 
     Assume probe directions are normalized. You should also normalize the model weights.
@@ -1560,7 +1575,7 @@ imshow(
 
 It seems to represent `(C0==BLANK) & (D1==THEIRS) & (E2==MINE)`.
 
-This is useful for the model, because if all three of these conditions hold, then `E2` is a legal move (because it flips `D1`).
+This is useful for the model, because if all three of these conditions hold, then `C0` is a legal move (because it flips `D1`).
 </details>
 
 
@@ -2300,6 +2315,7 @@ Can you guess what any of these neurons are doing? Does it help if you also plot
 
 ```python
 # Your code here - investigate the top 10 neurons by std dev of activations, see what you can find!
+
 plot_square_as_board(
     output_weights_in_logit_basis, 
     title=f"Output weights of top 10 neurons in layer 5, in the output logit basis",
@@ -2313,6 +2329,35 @@ plot_square_as_board(
     facet_labels=[f"L5N{n.item()}" for n in top_neurons]
 )
 ```
+
+<details>
+<summary>Solution</summary>
+
+```python
+layer = 5
+top_neurons = focus_cache["post", layer].std(dim=[0, 1]).argsort(descending=True)[:10]
+board_states = []
+output_weights_in_logit_basis = []
+
+for neuron in top_neurons:
+
+    # Get output weights in logit basis
+    w_out = get_w_out(model, layer, neuron, normalize=False)
+    state = t.zeros(8, 8, device=device)
+    state.flatten()[stoi_indices] = w_out @ model.W_U[:, 1:]
+    output_weights_in_logit_basis.append(state)
+    
+    # Get max activating dataset aggregations
+    neuron_acts = focus_cache["post", 5, "mlp"][:, :, neuron]
+    top_moves = neuron_acts > neuron_acts.quantile(0.99)
+    board_state_at_top_moves = focus_states_flipped_pm1[:, :-1][top_moves].float().mean(0)
+    board_states.append(board_state_at_top_moves)
+
+
+output_weights_in_logit_basis = t.stack(output_weights_in_logit_basis)
+board_states = t.stack(board_states)
+```
+</details>
 
 How do you interpret the results?
 
