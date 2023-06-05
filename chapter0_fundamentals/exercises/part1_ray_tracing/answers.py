@@ -86,7 +86,7 @@ def intersect_rays_1d(
     return ((u >= 0) & (0 <= v) & (v <= 1) & (~(singular_mask))).any(dim=1)
 
 @jaxtyped
-@typeguard.typechecked
+# @typeguard.typechecked
 def make_rays_2d(
     num_pixels_y: int,
     num_pixels_z: int,
@@ -106,16 +106,7 @@ def make_rays_2d(
     y_vals = t.linspace(-y_limit, y_limit, num_pixels_y)
     z_vals = t.linspace(-z_limit, z_limit, num_pixels_z)
 
-    @jaxtyped
-    def permute_vectorized() -> Float[t.Tensor, "num_pixels_y num_pixels_z 3"]:
-        return t.stack(
-            (
-                t.ones((1,))[:, None],
-                y_vals[:, None],
-                z_vals[None, :],
-            ),
-            dim=2,
-        )
-    result[:, 1, :] = permute_vectorized()
+    result[:, 1] = t.cartesian_prod(t.ones((1,)), y_vals, z_vals)
+
     return result
 
