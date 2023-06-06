@@ -212,6 +212,56 @@ def raytrace_triangle(
     return (s >= 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & (~singular_mask)
 
 
+
+
+def raytrace_mesh(
+    rays: Float[Tensor, "nrays rayPoints=2 dims=3"],
+    triangles: Float[Tensor, "ntriangles trianglePoints=3 dims=3"],
+) -> Float[Tensor, "nrays"]:
+    """
+    For each ray, return the distance to the closest intersecting triangle, or infinity.
+    """
+    nrays = rays.shape[0]
+    ntriangles = triangles.shape[0]
+
+    rays = einops.repeat(
+        rays,
+        "nrays rayPoints dims -> nrays ntriangles rayPoints dims",
+        ntriangles=ntriangles,
+    )
+    triangles = einops.repeat(
+        triangles,
+        "ntriangles trianglePoints dims -> nrays ntriangles trianglePoints dims",
+        nrays=nrays,
+    )
+    O = rays[..., 0, :]
+    D = rays[..., 1, :]
+
+    A = triangles[..., 0, :]
+    B = triangles[..., 1, :]
+    C = triangles[..., 2, :]
+
+    As: t.Tensor = t.stack(
+        (
+            -D,
+            (B - A),
+            (C - A),
+        ),
+        dim=3,
+    )
+    Bs = O - A
+    singular_mask = As.det().abs() < 1e-6
+    As[singular_mask] = t.eye(3)
+    x = t.linalg.solve(As, Bs).squeeze()
+    s = x[..., 0]
+    u = x[..., 1]
+    v = x[..., 2]
+
+    intersections = (s >= 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & (~singular_mask)
+    dists = t.where(intersections, s, t.tensor(float("inf")))
+    return dists.min(dim=1).values
+
+
 def main():
     """
     use with
@@ -219,35 +269,28 @@ def main():
     >>> from part1_ray_tracing import answers
     >>> %imgcat answers.main()
     """
-    A = t.tensor([1, 0.0, -0.5])
-    B = t.tensor([1, -0.5, 0.0])
-    C = t.tensor([1, 0.5, 0.5])
-    num_pixels_y = num_pixels_z = 40
-    y_limit = z_limit = 0.5
+    num_pixels_y = 120
+    num_pixels_z = 120
+    y_limit = z_limit = 1
 
-    # Plot triangle & rays
-    test_triangle = t.stack([A, B, C], dim=0)
-    rays2d = make_rays_2d(num_pixels_y, num_pixels_z, y_limit, z_limit)
-    triangle_lines = t.stack([A, B, C, A, B, C], dim=0).reshape(-1, 2, 3)
+    with open(section_dir / "pikachu.pt", "rb") as f:
+        triangles = t.load(f)
 
-    # breakpoint()
-    fig = render_lines_with_plotly(rays2d, triangle_lines)
-    # fig.write_image("triangle.png")
-    result = io.BytesIO()
-    fig.write_image(result, format="png")
-    with tempfile.NamedTemporaryFile() as f:
-        fig.write_image(f.name, format="png")
-        with open(f.name, "rb") as f:
-            pass
-            # imgcat(f.read())
+    rays = make_rays_2d(num_pixels_y, num_pixels_z, y_limit, z_limit)
+    rays[:, 0] = t.tensor([-2, 0.0, 0.0])
+    dists = raytrace_mesh(rays, triangles)
+    print(f"{dists=}")
+    intersects = t.isfinite(dists).view(num_pixels_y, num_pixels_z)
+    dists_square = dists.view(num_pixels_y, num_pixels_z)
+    img = t.stack([intersects, dists_square], dim=0)
 
-    # Calculate and display intersections
-    intersects = raytrace_triangle(rays2d, test_triangle)
-    img = intersects.reshape(num_pixels_y, num_pixels_z).int()
-    fig = imshow(
-        img, origin="lower", width=600, title="Triangle (as intersected by rays)"
+    fig = px.imshow(
+        img, facet_col=0, origin="lower", color_continuous_scale="magma", width=1000
     )
-    return fig.to_image(format="png")
+    fig.update_layout(coloraxis_showscale=False)
+    for i, text in enumerate(["Intersects", "Distance"]):
+        fig.layout.annotations[i]["text"] = text
+    fig.show()
 
 
 if __name__ == "__main__":
