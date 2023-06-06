@@ -10,7 +10,7 @@ import pandas as pd
 
 update_layout_set = {"xaxis_range", "yaxis_range", "hovermode", "xaxis_title", "yaxis_title", "colorbar", "colorscale", "coloraxis", "title_x", "bargap", "bargroupgap", "xaxis_tickformat", "yaxis_tickformat", "title_y", "legend_title_text", "xaxis_showgrid", "xaxis_gridwidth", "xaxis_gridcolor", "yaxis_showgrid", "yaxis_gridwidth", "yaxis_gridcolor", "showlegend", "xaxis_tickmode", "yaxis_tickmode", "margin", "xaxis_visible", "yaxis_visible", "bargap", "bargroupgap"}
 
-def imshow(tensor, renderer=None, **kwargs):
+def imshow(tensor, renderer=None, show=True, **kwargs):
     kwargs_post = {k: v for k, v in kwargs.items() if k in update_layout_set}
     kwargs_pre = {k: v for k, v in kwargs.items() if k not in update_layout_set}
     if "facet_labels" in kwargs_pre:
@@ -30,6 +30,10 @@ def imshow(tensor, renderer=None, **kwargs):
             facet_labels = reorder_list_in_plotly_way(facet_labels, kwargs_pre["facet_col_wrap"])
         for i, label in enumerate(facet_labels):
             fig.layout.annotations[i]['text'] = label
+
+    if not show:
+        return fig
+
     fig.show(renderer=renderer)
 
 

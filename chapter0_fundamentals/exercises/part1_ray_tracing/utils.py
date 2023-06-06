@@ -1,8 +1,12 @@
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.offline.offline import plotly
 import torch as t
 
-def render_lines_with_plotly(lines: t.Tensor, bold_lines: t.Tensor = t.Tensor()):
+def render_lines_with_plotly(
+    lines: t.Tensor,
+    bold_lines: t.Tensor = t.Tensor()
+) -> go.Figure:
     '''
     Plot any number of line segments in 3D.
 
@@ -17,7 +21,7 @@ def render_lines_with_plotly(lines: t.Tensor, bold_lines: t.Tensor = t.Tensor())
     for line in bold_lines:
         X, Y, Z = line.T
         fig.add_scatter3d(x=X, y=Y, z=Z, mode="lines", line_width=5, line_color="black")
-    fig.show()
+    return fig
 
 
 def setup_widget_fig_ray():
