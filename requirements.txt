@@ -30,6 +30,7 @@ jaxtyping
 typeguard<4
 streamlit
 torchinfo
+torchvision
 frozendict
 streamlit-chat
 pytorch-lightning
