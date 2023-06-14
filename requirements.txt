@@ -1,5 +1,6 @@
 einops
-more-itertools
+pydantic
+pdbpp
 imgcat
 requests
 pytest

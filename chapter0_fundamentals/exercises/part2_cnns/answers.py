@@ -1,8 +1,12 @@
 import os
-import more_itertools as mi
+import pydantic
+import attrs
+from typing import Sequence
 from operator import mul
 from functools import reduce
-from dataclasses import dataclass
+
+from pydantic.dataclasses import dataclass
+
 import sys
 import numpy as np
 import einops
@@ -100,14 +104,6 @@ def einsum_outer(vec1: np.ndarray, vec2: np.ndarray):
     Returns the same as `np.outer`.
     """
     return np.einsum("i,j->ij", vec1, vec2)
-
-
-# if MAIN:
-#     tests.test_einsum_trace(einsum_trace)
-#     tests.test_einsum_mv(einsum_mv)
-#     tests.test_einsum_mm(einsum_mm)
-#     tests.test_einsum_inner(einsum_inner)
-#     tests.test_einsum_outer(einsum_outer)
 
 
 def conv1d_minimal_simple(
@@ -275,6 +271,15 @@ IntOrPair = Union[int, Tuple[int, int]]
 Pair = Tuple[int, int]
 
 
+def ge(x: int):
+    def validator(v: IntOrPair):
+        if isinstance(v, int):
+            assert v >= x
+        assert all(element >= x for element in x)
+
+    return validator
+
+
 def force_pair(v: IntOrPair) -> Pair:
     """Convert v to a pair of int, if it isn't already."""
     if isinstance(v, int):
@@ -382,6 +387,12 @@ class DataclassModule(nn.Module):
         return inst
 
 
+@attrs.define
+class AttrsModule(nn.Module):
+    def __attrs_pre_init__(self):
+        nn.Module.__init__(self)
+
+
 @dataclass(eq=False)
 class MaxPool2d(DataclassModule):
     kernel_size: IntOrPair
@@ -420,5 +431,74 @@ class Flatten(DataclassModule):
         return t.reshape(input, target_shape)
 
 
+def create_bias(in_features: int, out_features: int) -> nn.Parameter:
+    return nn.Parameter(kaiming((out_features,), in_features))
+
+
+def kaiming(shape: Sequence[int], input_features: int) -> t.Tensor:
+    return (t.randn(shape) - 0.5) * 2 / (input_features**0.5)
+
+
+@attrs.define(eq=False, init=False, unsafe_hash=True)
+class Linear(AttrsModule):
+    in_features: int
+    out_features: int
+    bias: bool
+    weight: nn.Parameter = attrs.field(init=False)
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        nn.Module.__init__(self)
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(kaiming((out_features, in_features), in_features))
+
+        self.bias = (
+            nn.Parameter(kaiming((out_features,), in_features)) if bias else None
+        )
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        """
+        x: shape (*, in_features)
+        Return: shape (*, out_features)
+        """
+        result = einops.einsum(self.weight, x, "o i, ... i -> ... o")
+
+        if isinstance(self.bias, nn.Parameter):
+            result += self.bias
+
+        return result
+
+
+def reusable_validator(name: str):
+    return pydantic.validator(name, allow_reuse=True)
+
+
+@dataclass(eq=False)
+class Conv2d(DataclassModule):
+    in_channels: int
+    out_channels: int
+    kernel_size: IntOrPair = pydantic.Field(..., ge=1)
+    stride: IntOrPair = pydantic.Field(1, ge=1)
+    padding: IntOrPair = pydantic.Field(0, ge=0)
+
+    _kernel_size = reusable_validator("kernel_size")(force_pair)
+    _stride = reusable_validator("stride")(force_pair)
+    _padding = reusable_validator("padding")(force_pair)
+
+    def __post_init__(self):
+        kh, kw = self.kernel_size
+        #  "oc ic kh kw"
+        self.weight = nn.Parameter(
+            kaiming(
+                (self.out_channels, self.in_channels, kh, kw),
+                self.in_channels * kh * kw,
+            )
+        )
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        """Apply the functional conv2d you wrote earlier."""
+        return conv2d(x, self.weight, stride=self.stride, padding=self.padding)
+
+
 if MAIN:
-    tests.test_flatten(Flatten)
+    tests.test_conv2d_module(Conv2d)
