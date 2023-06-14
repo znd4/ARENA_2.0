@@ -160,6 +160,100 @@ def pad2d(
     return result
 
 
+def conv1d(
+    x: Float[Tensor, "b ic w"],
+    weights: Float[Tensor, "oc ic kw"],
+    stride: int = 1,
+    padding: int = 0,
+) -> Float[Tensor, "b oc ow"]:
+    """
+    Like torch's conv1d using bias=False.
+
+    x: shape (batch, in_channels, width)
+    weights: shape (out_channels, in_channels, kernel_width)
+
+    Returns: shape (batch, out_channels, output_width)
+    """
+    x = pad1d(x, padding, padding, 0.0)
+
+    b, ic, w = x.shape
+    oc, ic, kw = weights.shape
+
+    ow = (w - kw) // stride + 1
+
+    s_b, s_ic, s_w = x.stride()
+    s_w *= stride
+    size, stride = zip([b, s_b], [ic, s_ic], [ow, s_w], [kw, s_w // stride])
+    x_strided = x.as_strided(size=size, stride=stride)
+    return einops.einsum(
+        x_strided,
+        weights,
+        "b ic ow kw, oc ic kw -> b oc ow",
+    )
+
+
+IntOrPair = Union[int, Tuple[int, int]]
+Pair = Tuple[int, int]
+
+
+def force_pair(v: IntOrPair) -> Pair:
+    """Convert v to a pair of int, if it isn't already."""
+    if isinstance(v, int):
+        return (v, v)
+
+    if not isinstance(v, tuple):
+        raise ValueError(v)
+
+    if len(v) != 2:
+        raise ValueError(v)
+
+    return (int(v[0]), int(v[1]))
+
+
+def conv2d(
+    x: Float[Tensor, "b ic h w"],
+    weights: Float[Tensor, "oc ic kh kw"],
+    stride: IntOrPair = 1,
+    padding: IntOrPair = 0,
+) -> Float[Tensor, "b oc oh ow"]:
+    """
+    Like torch's conv2d using bias=False
+
+    x: shape (batch, in_channels, height, width)
+    weights: shape (out_channels, in_channels, kernel_height, kernel_width)
+
+    Returns: shape (batch, out_channels, output_height, output_width)
+    """
+    h_pad, w_pad = force_pair(padding)
+    x = pad2d(x, w_pad, w_pad, h_pad, h_pad, 0.0)
+
+    b, ic, h, w = x.shape
+    oc, ic, kh, kw = weights.shape
+
+    h_stride, w_stride = force_pair(stride)
+
+    oh = (h - kh) // h_stride + 1
+    ow = (w - kw) // w_stride + 1
+    s_b, s_ic, s_h, s_w = x.stride()
+
+    x_size, x_stride = zip(
+        (b, s_b),
+        (ic, s_ic),
+        (oh, s_h * h_stride),
+        (ow, s_w * w_stride),
+        (kh, s_h),
+        (kw, s_w),
+    )
+    x_strided = x.as_strided(
+        size=x_size,
+        stride=x_stride,
+    )
+    return einops.einsum(
+        x_strided,
+        weights,
+        "b ic oh ow kh kw, oc ic kh kw -> b oc oh ow",
+    )
+
+
 if MAIN:
-    tests.test_pad2d(pad2d)
-    tests.test_pad2d_multi_channel(pad2d)
+    tests.test_conv2d(conv2d)
