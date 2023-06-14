@@ -255,5 +255,45 @@ def conv2d(
     )
 
 
+def maxpool2d(
+    x: Float[Tensor, "b ic h w"],
+    kernel_size: IntOrPair,
+    stride: Optional[IntOrPair] = None,
+    padding: IntOrPair = 0,
+) -> Float[Tensor, "b ic oh ow"]:
+    """
+    Like PyTorch's maxpool2d.
+
+    x: shape (batch, channels, height, width)
+    stride: if None, should be equal to the kernel size
+
+    Return: (batch, channels, output_height, output_width)
+    """
+    stride = stride or kernel_size
+    h_pad, w_pad = force_pair(padding)
+    x = pad2d(x, w_pad, w_pad, h_pad, h_pad, -np.inf)
+    b, ic, h, w = x.shape
+
+    h_stride, w_stride = force_pair(stride)
+    kh, kw = force_pair(kernel_size)
+
+    oh = (h - kh) // h_stride + 1
+    ow = (w - kw) // w_stride + 1
+
+    s_b, s_ic, s_h, s_w = x.stride()
+    size, stride = zip(
+        (kh, s_h),
+        (kw, s_w),
+        (b, s_b),
+        (ic, s_ic),
+        (oh, s_h * h_stride),
+        (ow, s_w * w_stride),
+    )
+    return x.as_strided(
+        size=size,
+        stride=stride,
+    ).amax(dim=(0, 1))
+
+
 if MAIN:
-    tests.test_conv2d(conv2d)
+    tests.test_maxpool2d(maxpool2d)
