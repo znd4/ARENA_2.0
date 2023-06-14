@@ -1,4 +1,5 @@
 einops
+more-itertools
 imgcat
 requests
 pytest

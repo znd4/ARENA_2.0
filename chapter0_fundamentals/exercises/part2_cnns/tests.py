@@ -294,6 +294,7 @@ def test_relu(ReLU):
 def test_flatten(Flatten):
     x = t.arange(24).reshape((2, 3, 4))
     assert Flatten(start_dim=0)(x).shape == (24,)
+    assert Flatten(start_dim=0, end_dim=2)(x).shape == (24,)
     assert Flatten(start_dim=1)(x).shape == (2, 12)
     assert Flatten(start_dim=0, end_dim=1)(x).shape == (6, 4)
     assert Flatten(start_dim=0, end_dim=-2)(x).shape == (6, 4)
