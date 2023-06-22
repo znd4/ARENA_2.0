@@ -1,29 +1,22 @@
 import os
+import einops
+import sys
+import textwrap
+from pathlib import Path
+from typing import Tuple, Callable
+
 from pydantic.dataclasses import dataclass
+from torchvision import datasets, transforms
+
+import pytorch_lightning as pl
+import torch as t
+import torch.nn.functional as F
+from jaxtyping import Float, Int
+from torch import Tensor, nn
+from torch.utils.data import DataLoader, Subset
+
 
 os.environ["ACCELERATE_DISABLE_RICH"] = "1"
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import CSVLogger
-import sys
-import torch as t
-from torch import Tensor
-from torch import nn
-import torch.nn.functional as F
-from collections import OrderedDict
-from einops import rearrange
-from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader, Subset
-from tqdm.notebook import tqdm
-from typing import List, Tuple, Dict, Callable
-from PIL import Image
-from IPython.display import display
-from pathlib import Path
-import torchinfo
-import json
-import pandas as pd
-from jaxtyping import Float, Int
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import CSVLogger
 
 # Make sure exercises are in the path
 chapter = r"chapter0_fundamentals"
@@ -33,10 +26,8 @@ if str(exercises_dir) not in sys.path:
     sys.path.append(str(exercises_dir))
 os.chdir(section_dir)
 
-from part2_cnns.solutions import get_mnist, Linear, Conv2d, Flatten, ReLU, MaxPool2d
-from part3_resnets.utils import print_param_count
 import part3_resnets.tests as tests
-from plotly_utils import line, plot_train_loss_and_test_accuracy_from_metrics
+from part2_cnns.solutions import Linear, Conv2d, Flatten, ReLU, MaxPool2d
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
@@ -176,33 +167,82 @@ class LitConvNet(pl.LightningModule):
         )
 
 
+class BatchNorm2d(nn.Module):
+    # The type hints below aren't functional, they're just for documentation
+    running_mean: Float[Tensor, "num_features"]
+    running_var: Float[Tensor, "num_features"]
+    num_batches_tracked: Int[Tensor, ""]  # This is how we denote a scalar tensor
+
+    def __init__(self, num_features: int, eps=1e-05, momentum=0.1):
+        """
+        Like nn.BatchNorm2d with track_running_stats=True and affine=True.
+
+        Name the learnable affine parameters `weight` and `bias` in that order.
+        """
+        super().__init__()
+
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+
+        self.register_buffer("running_mean", t.zeros(num_features))
+        self.register_buffer("running_var", t.ones(num_features))
+        self.register_buffer("num_batches_tracked", t.tensor(0))
+
+        self.weight = nn.Parameter(t.ones(num_features))
+        self.bias = nn.Parameter(t.zeros(num_features))
+
+    def __calc_running(self, old, observation):
+        return old * (1 - self.momentum) + (observation * self.momentum)
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        """
+        Normalize each channel.
+
+        Compute the variance using `torch.var(x, unbiased=False)`
+        Hint: you may also find it helpful to use the argument `keepdim`.
+
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels, height, width)
+        """
+
+        def make_broadcastable(x: t.Tensor):
+            return einops.rearrange(x, "c -> 1 c 1 1")
+
+        if self.training:
+            self.num_batches_tracked += 1
+
+            mean = x.mean(dim=(0, 2, 3), keepdim=True)
+            var = t.var(
+                x,
+                (0, 2, 3),
+                keepdim=True,
+                correction=0,
+            )
+
+            self.running_mean = self.__calc_running(self.running_mean, mean.squeeze())
+            self.running_var = self.__calc_running(self.running_var, var.squeeze())
+        else:
+            mean = make_broadcastable(self.running_mean)
+            var = make_broadcastable(self.running_var)
+
+        weight = make_broadcastable(self.weight)
+        bias = make_broadcastable(self.bias)
+
+        normalized = (x - mean) / t.sqrt(var + self.eps)
+        return normalized * weight + bias
+
+    def extra_repr(self) -> str:
+        return textwrap.dedent(
+            f"""
+            {self.num_features=}
+            {self.eps=}
+            {self.momentum=}
+            """
+        )
+
+
 def main():
-    pl.seed_everything(42)
-    args = ConvNetTrainingArgs(max_epochs=100, weight_decay=1e-4)
-    model = LitConvNet(args)
-    logger = CSVLogger(save_dir=args.log_dir, name=args.log_name)
-
-    trainer = pl.Trainer(max_epochs=args.max_epochs, logger=logger, log_every_n_steps=1)
-    trainer.fit(model=model)
-
-    # metrics = pd.read_csv(f"{trainer.logger.log_dir}/metrics.csv")
-    #
-    # return line(
-    #     metrics["train_loss"].values,
-    #     x=metrics["step"].values,
-    #     yaxis_range=[0, metrics["train_loss"].max() + 0.1],
-    #     labels={"x": "Batches seen", "y": "Cross entropy loss"},
-    #     title="ConvNet training on MNIST",
-    #     width=800,
-    #     hovermode="x unified",
-    #     template="ggplot2",  # alternative aesthetic for your plots (-:
-    # ).to_image(format="png")
-    metrics = pd.read_csv(f"{trainer.logger.log_dir}/metrics.csv")
-
-    return plot_train_loss_and_test_accuracy_from_metrics(
-        metrics, "Training ConvNet on MNIST data"
-    ).to_image(format="png")
-
-
-if MAIN:
-    main()
+    tests.test_batchnorm2d_module(BatchNorm2d)
+    tests.test_batchnorm2d_forward(BatchNorm2d)
+    tests.test_batchnorm2d_running_mean(BatchNorm2d)
