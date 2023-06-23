@@ -1,4 +1,5 @@
 einops
+kaleido
 pydantic
 pdbpp
 imgcat

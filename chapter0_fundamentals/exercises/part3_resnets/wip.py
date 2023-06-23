@@ -1,11 +1,13 @@
 import os
+import pandas as pd
+from pytorch_lightning.loggers import CSVLogger
 import json
 from PIL import Image
 import einops
 import sys
 import textwrap
 from pathlib import Path
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Type
 
 from pydantic.dataclasses import dataclass
 from torchvision import datasets, transforms, models
@@ -28,6 +30,7 @@ if str(exercises_dir) not in sys.path:
     sys.path.append(str(exercises_dir))
 os.chdir(section_dir)
 
+from plotly_utils import plot_train_loss_and_test_accuracy_from_metrics
 import part3_resnets.tests as tests
 from part3_resnets.utils import print_param_count
 from part2_cnns.solutions import Linear, Conv2d, Flatten, ReLU, MaxPool2d
@@ -402,36 +405,122 @@ def predict(model, images):
     return logits.argmax(dim=1)
 
 
-def main():
-    my_resnet = ResNet34()
+def get_resnet_for_feature_extraction(n_classes: int) -> ResNet34:
+    """
+    Creates a ResNet34 instance, replaces its final linear layer with a classifier
+    for `n_classes` classes, and freezes all weights except the ones in this layer.
+
+    Returns the ResNet model.
+    """
+    resnet = ResNet34()
     pretrained_resnet = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
-    my_resnet = copy_weights(my_resnet, pretrained_resnet)
+    resnet: ResNet34 = copy_weights(resnet, pretrained_resnet)
 
-    IMAGE_FILENAMES = [
-        "chimpanzee.jpg",
-        "golden_retriever.jpg",
-        "platypus.jpg",
-        "frogs.jpg",
-        "fireworks.jpg",
-        "astronaut.jpg",
-        "iguana.jpg",
-        "volcano.jpg",
-        "goofy.jpg",
-        "dragonfly.jpg",
-    ]
+    resnet.requires_grad_(False)
+    resnet.blocks[-1] = Linear(resnet.blocks[-1].in_features, n_classes)
+    return resnet
 
-    IMAGE_FOLDER = section_dir / "resnet_inputs"
 
-    images = [Image.open(IMAGE_FOLDER / filename) for filename in IMAGE_FILENAMES]
-    prepared_images = prepare_data(images)
-    assert prepared_images.shape == (len(images), 3, IMAGE_SIZE, IMAGE_SIZE)
+def get_cifar(subset: int):
+    cifar_trainset = datasets.CIFAR10(
+        root="./data", train=True, download=True, transform=IMAGENET_TRANSFORM
+    )
+    cifar_testset = datasets.CIFAR10(
+        root="./data", train=False, download=True, transform=IMAGENET_TRANSFORM
+    )
 
-    with open(section_dir / "imagenet_labels.json") as f:
-        imagenet_labels = list(json.load(f).values())
+    if subset > 1:
+        cifar_trainset = Subset(
+            cifar_trainset, indices=range(0, len(cifar_trainset), subset)
+        )
+        cifar_testset = Subset(
+            cifar_testset, indices=range(0, len(cifar_testset), subset)
+        )
 
-    my_predictions = predict(my_resnet, prepared_images)
-    pretrained_predictions = predict(pretrained_resnet, prepared_images)
-    assert all(my_predictions == pretrained_predictions)
+    return cifar_trainset, cifar_testset
+
+
+@dataclass
+class ResNetTrainingArgs:
+    batch_size: int = 64
+    max_epochs: int = 3
+    max_steps: int = 500
+    optimizer: Type[t.optim.Optimizer] = t.optim.Adam
+    learning_rate: float = 1e-3
+    log_dir: str = os.getcwd() + "/logs"
+    log_name: str = "day3-resnet"
+    log_every_n_steps: int = 1
+    n_classes: int = 10
+    subset: int = 10
+
+
+class LitResNet(pl.LightningModule):
+    def __init__(self, args: ResNetTrainingArgs):
+        super().__init__()
+        self.network = get_resnet_for_feature_extraction(args.n_classes)
+        self.args: ResNetTrainingArgs = args
+        self.trainset, self.testset = get_cifar(subset=args.subset)
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        return self.network(x)
+
+    def _shared_train_val_step(
+        self,
+        batch: Tuple[Tensor, Tensor],
+        metric_fn: Callable[[t.Tensor, t.Tensor], float],
+    ) -> Tuple[Tensor, Tensor]:
+        images, labels = batch
+        logits = self.network(images)
+
+        result = metric_fn(logits, labels)
+        return result
+
+    def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> t.Tensor:
+        result = self._shared_train_val_step(batch, F.cross_entropy)
+        self.log("train_loss", result)
+        return result
+
+    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> None:
+        result = self._shared_train_val_step(
+            batch,
+            lambda logits, labels: (t.argmax(logits, -1) == labels)
+            .float()
+            .mean()
+            .item(),
+        )
+        self.log("accuracy", result)
+
+    def configure_optimizers(self):
+        return self.args.optimizer(
+            self.network.blocks[-1].parameters(), lr=self.args.learning_rate
+        )
+
+    def val_dataloader(self):
+        return DataLoader(self.testset, batch_size=self.args.batch_size, shuffle=False)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.trainset, batch_size=self.args.batch_size, shuffle=True, num_workers=10
+        )
+
+
+def main():
+    args = ResNetTrainingArgs()
+    model = LitResNet(args)
+    logger = CSVLogger(save_dir=args.log_dir, name=args.log_name)
+
+    trainer = pl.Trainer(
+        max_epochs=args.max_epochs,
+        logger=logger,
+        log_every_n_steps=args.log_every_n_steps,
+    )
+    trainer.fit(model=model)
+
+    metrics = pd.read_csv(f"{trainer.logger.log_dir}/metrics.csv")
+
+    return plot_train_loss_and_test_accuracy_from_metrics(
+        metrics, "Feature extraction with ResNet34"
+    ).write_image("foo.png")
 
 
 if MAIN:
